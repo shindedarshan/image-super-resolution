@@ -7,17 +7,14 @@ from torch.utils.data import DataLoader
 import PIL
 
 class faces_super(data.Dataset):
-    def __init__(self, datasets,transform):
-        assert datasets, print('no datasets specified')
+    def __init__(self, data_path,transform):
+        assert data_path, print('no data_path specified')
         self.transform = transform
         self.img_list = []
-        dataset = datasets
-        if dataset == 'widerfacetest':
-            img_path = 'testset/'
-            list_name = (glob(os.path.join(img_path, "*.jpg")))
-            list_name.sort()
-            for filename in list_name:#jpg
-                self.img_list.append(filename)
+        list_name = (glob(os.path.join(data_path, "*.jpg")))
+        list_name.sort()
+        for filename in list_name:#jpg
+            self.img_list.append(filename)
 
     def __len__(self):
         return len(self.img_list)
@@ -31,10 +28,33 @@ class faces_super(data.Dataset):
         data['imgpath'] = self.img_list[index]
         return data
 
-def get_loader(dataname,bs =1):
+class dataset_maker(data.Dataset):
+    def __init__(self, root_dir1, root_dir2, transform= None):
+        self.root_dir1=root_dir1
+        self.root_dir2=root_dir2
+        self.hrlist = glob(root_dir1+'*.jpg')
+        self.lrlist = glob(root_dir2+'*.jpg')
+        self.transform=transform
+        
+    def __len__(self):
+        return min(len(self.hrlist),len(self.lrlist))
+    
+    def __getitem__(self, idx):
+        data = {}
+        hr = Image.open(self.hrlist[idx])
+        lr = Image.open(self.lrlist[idx])
+        if self.transform:
+            data['hr'] = self.transform(hr)
+            data['lr'] = self.transform(lr)
+        return data
+    
+def get_loader(path1 = None, path2 = None, bs = 1):
     transform = transforms.Compose([
             transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-    dataset = faces_super(dataname, transform)
+    if path2 == None:
+        dataset = faces_super(path1, transform)
+    if path1 != None and path2 != None:
+        dataset = dataset_maker(path1, path2, transform)    
     data_loader = DataLoader(dataset=dataset,
                              batch_size=bs,
                              shuffle=False, num_workers=2, pin_memory=True)

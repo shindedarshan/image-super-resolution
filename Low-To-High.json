@@ -7,7 +7,7 @@
   "gpu_device": 0,
   "seed": 12345,
 
-  "batch_size": 64,
+  "batch_size": 1,
 
   "num_classes": 2,
 
@@ -25,6 +25,9 @@
 
   "checkpoint_file": "checkpoint.pth.tar",
 
+  "LowToHigh_datapath": "F:/Study/2nd_Semester/CV/Project/Face-and-Image-super-resolution-master/testset/",
+  "HighToLow_hr_datapath": "F:/Study/2nd_Semester/CV/Project/Face-and-Image-super-resolution-master/Dataset/HIGH/celea_60000_SFD/",
+  "HighToLow_lr_datapath": "F:/Study/2nd_Semester/CV/Project/Face-and-Image-super-resolution-master/testset/",
   "data_loader_workers": 2,
   "pin_memory": true,
   "async_loading": true,
