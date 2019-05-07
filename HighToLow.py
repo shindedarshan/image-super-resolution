@@ -11,12 +11,11 @@ import config
 from base import BaseAgent
 from Generator import HighToLowGenerator
 from Discriminator import HighToLowDiscriminator
-from loss import HingeEmbeddingLoss, MSELoss, GANLoss
+from loss import MSELoss
 from dataset import get_loader
 
 from tensorboardX import SummaryWriter
 from misc import print_cuda_statistics
-from metrics import AverageMeter
 
 cudnn.benchmark = True
 
@@ -54,10 +53,8 @@ class HighToLow(BaseAgent):
         self.cuda = self.is_cuda & self.config.cuda
         
         # set the manual seed for torch
-        #if not self.config.seed:
         self.manual_seed = random.randint(1, 10000)
         self.logger.info ('seed:{}'.format(self.manual_seed))
-        #self.logger.info ("seed: " , self.manual_seed)
         random.seed(self.manual_seed)
         
         self.test_file = self.config.output_path
@@ -102,7 +99,7 @@ class HighToLow(BaseAgent):
 
             self.logger.info("Checkpoint loaded successfully from '{}' at (epoch {}) at (iteration {})\n"
                   .format(self.config.checkpoint_dir, checkpoint['epoch'], checkpoint['iteration']))
-        except OSError as e:
+        except OSError:
             self.logger.info("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
             self.logger.info("**First time to train**")
 
@@ -158,11 +155,12 @@ class HighToLow(BaseAgent):
             #y = torch.full((self.batch_size,), self.real_label)
             data_low = data_dict['lr']
             data_high = data_dict['hr']
+            data_high_low = data_dict['hlr']
             data_input_low, batchsize = self.to_var(data_low)
             data_input_high, _ = self.to_var(data_high)
+            data_input_high_low, _ = self.to_var(data_high_low)
             
             y = torch.randn(data_low.size(0), )
-            #y = Variable(y)
             y, _ = self.to_var(y)
             
             ##################
@@ -174,14 +172,14 @@ class HighToLow(BaseAgent):
             # Generate a high resolution image from low resolution input
             noise = torch.randn(data_high.size(0), 1)
             noise, _ = self.to_var(noise)
-            gen_hr = self.netG(data_input_high, noise)
+            gen_lr = self.netG(data_input_high, noise)
     
             # Measure pixel-wise loss against ground truth
-            loss_pixel = self.criterion_MSE(gen_hr, data_input_low)
+            loss_pixel = self.criterion_MSE(gen_lr, data_input_high_low)
             
             # Extract validity predictions from discriminator
             pred_real = self.netD(data_input_high).detach()
-            pred_fake = self.netD(gen_hr)
+            pred_fake = self.netD(gen_lr)
 
             # Adversarial loss (relativistic average GAN)
             y.fill_(self.real_label)
@@ -205,14 +203,13 @@ class HighToLow(BaseAgent):
             loss_D_real = self.criterion_GAN(pred_real - pred_fake.mean(0, keepdim=True), y)
             loss_D_real.backward(retain_graph=True)
             
-            pred_fake = self.netD(gen_hr.detach())
+            pred_fake = self.netD(gen_lr.detach())
             y.fill_(self.fake_label)
             loss_D_fake = self.criterion_GAN(pred_fake - pred_real.mean(0, keepdim=True), y)
             loss_D_fake.backward()
             # Total loss
             loss_D = (loss_D_real + loss_D_fake) / 2
     
-            #loss_D.backward()
             self.optimD.step()
             
             self.current_iteration += 1
@@ -222,7 +219,7 @@ class HighToLow(BaseAgent):
             self.summary_writer.add_scalar("epoch/Discriminator_loss_fake", loss_D_fake.item(), self.current_iteration)
             
             path = os.path.join(self.test_file, 'batch' + str(curr_it) + '_epoch'+ str(self.current_epoch) + '.jpg')
-            vutils.save_image(gen_hr.data, path, normalize=True)
+            vutils.save_image(gen_lr.data, path, normalize=True)
             
             # --------------
             #  Log Progress
@@ -259,6 +256,6 @@ class HighToLow(BaseAgent):
         self.dataloader.finalize()
         
 if __name__ == "__main__":
-    config_dir = config.process_config('F:/Study/2nd_Semester/CV/Project/temp/configurations/Low-To-High.json')
+    config_dir = config.process_config('configurations/train_config.json')
     gan = HighToLow(config_dir)
     gan.run()

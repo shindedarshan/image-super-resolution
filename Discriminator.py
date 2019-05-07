@@ -123,6 +123,9 @@ class HighToLowDiscriminator(nn.Module):
         x = self.main(x)
         x = x.view(-1)
         fc = nn.Linear(x.shape[0], batch_size)
-        fc.to(torch.device('cuda:0'))
+        if torch.cuda.is_available():
+            fc.to(torch.device('cuda:0'))
+        else:
+            fc.to(torch.device('cpu'))
         out = fc(x)        
         return out

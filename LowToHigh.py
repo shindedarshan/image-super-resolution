@@ -1,4 +1,3 @@
-import shutil
 import random
 import os
 
@@ -11,12 +10,11 @@ import config
 from base import BaseAgent
 from Generator import LowToHighGenerator
 from Discriminator import LowToHighDiscriminator
-from loss import HingeEmbeddingLoss, MSELoss, GANLoss
+from loss import MSELoss
 from dataset import get_loader
 
 from tensorboardX import SummaryWriter
 from misc import print_cuda_statistics
-from metrics import AverageMeter
 
 cudnn.benchmark = True
 
@@ -28,10 +26,6 @@ class LowToHigh(BaseAgent):
         self.netG = LowToHighGenerator()
         self.netD = LowToHighDiscriminator()
 
-        # define dataloaders
-        #self.hrdataloader = DataLoader(self.config, 'hr')
-        #self.lrdataloader = DataLoader(self.config, 'lr')
-        
         # define loss
         #self.loss = GANLoss()
         #self.loss = HingeEmbeddingLoss()
@@ -58,10 +52,8 @@ class LowToHigh(BaseAgent):
         self.cuda = self.is_cuda & self.config.cuda
         
         # set the manual seed for torch
-        #if not self.config.seed:
         self.manual_seed = random.randint(1, 10000)
         self.logger.info ('seed:{}'.format(self.manual_seed))
-        #self.logger.info ("seed: " , self.manual_seed)
         random.seed(self.manual_seed)
         
         self.test_file = self.config.output_path
@@ -106,7 +98,7 @@ class LowToHigh(BaseAgent):
 
             self.logger.info("Checkpoint loaded successfully from '{}' at (epoch {}) at (iteration {})\n"
                   .format(self.config.checkpoint_dir, checkpoint['epoch'], checkpoint['iteration']))
-        except OSError as e:
+        except OSError:
             self.logger.info("No checkpoint exists from '{}'. Skipping...".format(self.config.checkpoint_dir))
             self.logger.info("**First time to train**")
 
@@ -123,10 +115,6 @@ class LowToHigh(BaseAgent):
 
         # Save the state
         torch.save(state, self.config.checkpoint_dir + file_name)
-        # If it is the best copy it to another file 'model_best.pth.tar'
-        if is_best:
-            shutil.copyfile(self.config.checkpoint_dir + file_name,
-                            self.config.checkpoint_dir + 'model_best.pth.tar')
             
     def run(self):
         """
@@ -151,29 +139,19 @@ class LowToHigh(BaseAgent):
         return inp, batchsize
     
     def train_one_epoch(self):
-        # initialize tqdm batch
-        #tqdm_hr_batch = tqdm(self.hrdataloader.loader, total=self.hrdataloader.num_iterations, desc="epoch-{}-".format(self.current_epoch))
-        #tqdm_lr_batch = tqdm(self.lrdataloader.loader, total=self.lrdataloader.num_iterations, desc="epoch-{}-".format(self.current_epoch))
-        data_name = 'widerfacetest'
-        test_loader = get_loader(data_name, self.config.batch_size)
+        test_loader = get_loader(self.config.LowToHigh_datapath, 
+                                 self.config.batch_size)
         
         self.netG.train()
         self.netD.train()
 
-        epoch_lossG = AverageMeter()
-        epoch_lossD = AverageMeter()
-        epoch_lossD_real = AverageMeter()
-        epoch_lossD_fake = AverageMeter()
-
         for curr_it, data_dict in enumerate(test_loader):
-            #y = torch.full((self.batch_size,), self.real_label)
             data_low = data_dict['img16']
             data_high = data_dict['img64']
             data_input_low, batchsize = self.to_var(data_low)
             data_input_high, _ = self.to_var(data_high)
             
             y = torch.randn(data_low.size(0), )
-            #y = Variable(y)
             y, _ = self.to_var(y)
             
             ##################
@@ -224,16 +202,11 @@ class LowToHigh(BaseAgent):
             #loss_D.backward()
             self.optimD.step()
             
-            epoch_lossD.update(loss_D.item())
-            epoch_lossD_real.update(loss_D_real.item())
-            epoch_lossD_fake.update(loss_D_fake.item())
-            epoch_lossG.update(loss_G.item())
-
             self.current_iteration += 1
 
-            self.summary_writer.add_scalar("epoch/Generator_loss", epoch_lossG.val, self.current_iteration)
-            self.summary_writer.add_scalar("epoch/Discriminator_loss_real", epoch_lossD_real.val, self.current_iteration)
-            self.summary_writer.add_scalar("epoch/Discriminator_loss_fake", epoch_lossD_fake.val, self.current_iteration)
+            self.summary_writer.add_scalar("epoch/Generator_loss", loss_G.item(), self.current_iteration)
+            self.summary_writer.add_scalar("epoch/Discriminator_loss_real", loss_D_real.item(), self.current_iteration)
+            self.summary_writer.add_scalar("epoch/Discriminator_loss_fake", loss_D_fake.item(), self.current_iteration)
             
             path = os.path.join(self.test_file, 'batch' + str(curr_it) + '_epoch'+ str(self.current_epoch) + '.jpg')
             vutils.save_image(gen_hr.data, path, normalize=True)
@@ -273,6 +246,6 @@ class LowToHigh(BaseAgent):
         self.dataloader.finalize()
         
 if __name__ == "__main__":
-    config_dir = config.process_config('Low-To-High.json')
+    config_dir = config.process_config('configurations/train_config.json')
     gan = LowToHigh(config_dir)
     gan.run()
